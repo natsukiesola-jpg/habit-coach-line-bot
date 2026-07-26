@@ -1,15 +1,15 @@
 {
-  "name": "line-openai-bot",
+  "name": "line-gemini-bot",
   "version": "1.0.0",
   "private": true,
-  "description": "LINE Messaging API + OpenAI API を使った Vercel デプロイ用 LINE Bot",
+  "description": "LINE Messaging API + Google Gemini API を使った Vercel デプロイ用 LINE Bot",
   "scripts": {
     "build": "tsc --noEmit",
     "dev": "vercel dev"
   },
   "dependencies": {
     "@line/bot-sdk": "^9.4.2",
-    "openai": "^4.55.0"
+    "@google/genai": "^2.13.0"
   },
   "devDependencies": {
     "@vercel/node": "^3.1.7",
