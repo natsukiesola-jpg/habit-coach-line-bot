@@ -1,0 +1,19 @@
+{
+  "name": "line-openai-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LINE Messaging API + OpenAI API を使った Vercel デプロイ用 LINE Bot",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@line/bot-sdk": "^9.4.2",
+    "openai": "^4.55.0"
+  },
+  "devDependencies": {
+    "@vercel/node": "^3.1.7",
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.11"
+  }
+}
