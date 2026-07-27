@@ -55,9 +55,9 @@ function getLineClient() {
 }
 
 function getGenAI() {
-  if (!GEMINI_API_KEY) {
-    throw new Error("Missing GEMINI_API_KEY");
-  }
+  if (!GEMINI_API_KEY) throw new Error("Missing GEMINI_API_KEY");
+  return new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+}
 
   // 公式の最小形に合わせる
   return new GoogleGenAI({});
