@@ -7,12 +7,12 @@
     "dev": "vercel dev"
   },
   "dependencies": {
-    "@google/genai": "^1.16.0",
-    "@line/bot-sdk": "^10.17.1"
+    "@google/genai": "^2.13.0",
+    "@line/bot-sdk": "^11.2.0"
   },
   "devDependencies": {
-    "@types/node": "^22.15.30",
-    "@vercel/node": "^5.3.24",
-    "typescript": "^5.8.3"
+    "@types/node": "^26.1.1",
+    "@vercel/node": "^5.8.22",
+    "typescript": "^5.9.3"
   }
 }
