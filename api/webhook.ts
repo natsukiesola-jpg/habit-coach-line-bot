@@ -9,7 +9,6 @@ import {
 } from "@line/bot-sdk";
 import { GoogleGenAI } from "@google/genai";
 
-// LINE の署名検証には生ボディが必要
 export const config = {
   api: {
     bodyParser: false,
@@ -20,14 +19,6 @@ const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "";
 const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET ?? "";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
 const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
-
-const lineClient = new messagingApi.MessagingApiClient({
-  channelAccessToken: LINE_CHANNEL_ACCESS_TOKEN,
-});
-
-const genAI = new GoogleGenAI({
-  apiKey: GEMINI_API_KEY,
-});
 
 async function getRawBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -53,10 +44,28 @@ function isTextMessageEvent(
   return event.type === "message" && event.message.type === "text";
 }
 
-async function generateReply(userText: string): Promise<string> {
-  if (!GEMINI_API_KEY) {
-    return "いまAIの設定がまだ完了していません。GEMINI_API_KEY を確認してください。";
+function getLineClient() {
+  if (!LINE_CHANNEL_ACCESS_TOKEN) {
+    throw new Error("Missing LINE_CHANNEL_ACCESS_TOKEN");
   }
+
+  return new messagingApi.MessagingApiClient({
+    channelAccessToken: LINE_CHANNEL_ACCESS_TOKEN,
+  });
+}
+
+function getGenAI() {
+  if (!GEMINI_API_KEY) {
+    throw new Error("Missing GEMINI_API_KEY");
+  }
+
+  return new GoogleGenAI({
+    apiKey: GEMINI_API_KEY,
+  });
+}
+
+async function generateReply(userText: string): Promise<string> {
+  const genAI = getGenAI();
 
   const response = await genAI.models.generateContent({
     model: GEMINI_MODEL,
@@ -68,7 +77,6 @@ async function generateReply(userText: string): Promise<string> {
   });
 
   const text = response.text?.trim();
-
   return text && text.length > 0
     ? text
     : "すみません、うまく回答を生成できませんでした。";
@@ -79,11 +87,7 @@ async function handleEvent(event: WebhookEvent): Promise<void> {
     return;
   }
 
-  if (!LINE_CHANNEL_ACCESS_TOKEN) {
-    console.error("Missing LINE_CHANNEL_ACCESS_TOKEN");
-    return;
-  }
-
+  const lineClient = getLineClient();
   const userText = event.message.text;
 
   let replyText = "";
@@ -141,7 +145,6 @@ export default async function handler(
     }
 
     let events: WebhookEvent[] = [];
-
     try {
       const body = JSON.parse(rawBodyText) as { events?: WebhookEvent[] };
       events = body.events ?? [];
@@ -151,14 +154,13 @@ export default async function handler(
       return;
     }
 
-    // Verify 時は events が空でも 200 を返せばOK
+    // Verify は events が空でも 200 を返せばOK
     if (events.length === 0) {
       res.status(200).send("OK");
       return;
     }
 
     await Promise.all(events.map((event) => handleEvent(event)));
-
     res.status(200).send("OK");
   } catch (err) {
     console.error("Webhook handling error:", err);
