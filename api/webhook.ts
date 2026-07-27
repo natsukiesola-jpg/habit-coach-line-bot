@@ -7,7 +7,6 @@ import {
   type MessageEvent,
   type TextEventMessage,
 } from "@line/bot-sdk";
-import { GoogleGenAI } from "@google/genai";
 
 export const config = {
   api: {
@@ -17,8 +16,6 @@ export const config = {
 
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "";
 const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET ?? "";
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 
 async function getRawBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -54,60 +51,17 @@ function getLineClient() {
   });
 }
 
-function getGenAI() {
-  if (!GEMINI_API_KEY) throw new Error("Missing GEMINI_API_KEY");
-  return new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-}
-
-  // 公式の最小形に合わせる
-  return new GoogleGenAI({});
-}
-
-function getGenAI() {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("Missing GEMINI_API_KEY");
-  }
-  return new GoogleGenAI({});
-}
-
-async function generateReply(userText: string): Promise<string> {
-  const genAI = getGenAI();
-
-  const response = await genAI.models.generateContent({
-    model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
-    contents: userText,
-  });
-
-  const text = response.text?.trim();
-  return text && text.length > 0
-    ? text
-    : "うまく回答を生成できませんでした。";
-}
-
-
 async function handleEvent(event: WebhookEvent): Promise<void> {
-  if (!isTextMessageEvent(event)) {
-    return;
-  }
+  if (!isTextMessageEvent(event)) return;
 
   const lineClient = getLineClient();
-  const userText = event.message.text;
-
-  let replyText = "";
-  try {
-    replyText = await generateReply(userText);
-  } catch (e) {
-  console.error("Gemini API error:", e);
-  reply = "AIの返答生成でエラーが発生しました。";
-}
-
 
   await lineClient.replyMessage({
     replyToken: event.replyToken,
     messages: [
       {
         type: "text",
-        text: replyText,
+        text: `受け取りました: ${event.message.text}`,
       },
     ],
   });
@@ -130,19 +84,15 @@ export default async function handler(
     }
 
     const rawBody = await getRawBody(req);
-    const rawBodyText = rawBody.toString("utf-8");
+    const rawText = rawBody.toString("utf-8");
     const signature = req.headers["x-line-signature"];
 
     const isValid =
       typeof signature === "string" &&
-      validateSignature(rawBodyText, LINE_CHANNEL_SECRET, signature);
+      validateSignature(rawText, LINE_CHANNEL_SECRET, signature);
 
     if (!isValid) {
-      console.error("Invalid signature", {
-        hasSecret: !!LINE_CHANNEL_SECRET,
-        signatureType: typeof signature,
-        bodyLength: rawBody.length,
-      });
+      console.error("Invalid signature");
       res.status(401).send("Invalid signature");
       return;
     }
@@ -150,22 +100,20 @@ export default async function handler(
     let events: WebhookEvent[] = [];
 
     try {
-      const body = JSON.parse(rawBodyText) as { events?: WebhookEvent[] };
+      const body = JSON.parse(rawText) as { events?: WebhookEvent[] };
       events = body.events ?? [];
     } catch (err) {
-      console.error("Invalid JSON:", err);
+      console.error("Invalid JSON", err);
       res.status(400).send("Invalid JSON");
       return;
     }
 
-    // LINE Developers の Verify 用
     if (events.length === 0) {
       res.status(200).send("OK");
       return;
     }
 
     await Promise.all(events.map((event) => handleEvent(event)));
-
     res.status(200).send("OK");
   } catch (err) {
     console.error("Webhook handling error:", err);
