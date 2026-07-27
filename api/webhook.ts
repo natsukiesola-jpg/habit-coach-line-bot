@@ -7,6 +7,7 @@ import {
   type MessageEvent,
   type TextEventMessage,
 } from "@line/bot-sdk";
+import { GoogleGenAI } from "@google/genai";
 
 export const config = {
   api: {
@@ -16,6 +17,10 @@ export const config = {
 
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN ?? "";
 const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET ?? "";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
+
+// 古い gemini-2.5-flash ではなく、新しい利用者でも使える現行モデルを固定
+const GEMINI_MODEL = "gemini-3.6-flash";
 
 async function getRawBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -51,20 +56,61 @@ function getLineClient() {
   });
 }
 
+function getGenAI() {
+  if (!GEMINI_API_KEY) {
+    throw new Error("Missing GEMINI_API_KEY");
+  }
+
+  return new GoogleGenAI({
+    apiKey: GEMINI_API_KEY,
+  });
+}
+
+async function generateReply(userText: string): Promise<string> {
+  const genAI = getGenAI();
+
+  const response = await genAI.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: userText,
+  });
+
+  const text = response.text?.trim();
+
+  return text && text.length > 0
+    ? text
+    : "うまく回答を生成できませんでした。";
+}
+
 async function handleEvent(event: WebhookEvent): Promise<void> {
   if (!isTextMessageEvent(event)) return;
 
   const lineClient = getLineClient();
 
-  await lineClient.replyMessage({
-    replyToken: event.replyToken,
-    messages: [
-      {
-        type: "text",
-        text: `受け取りました: ${event.message.text}`,
-      },
-    ],
-  });
+  try {
+    const replyText = await generateReply(event.message.text);
+
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [
+        {
+          type: "text",
+          text: replyText,
+        },
+      ],
+    });
+  } catch (err) {
+    console.error("Gemini API error:", err);
+
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [
+        {
+          type: "text",
+          text: "AIの返答生成でエラーが発生しました。",
+        },
+      ],
+    });
+  }
 }
 
 export default async function handler(
