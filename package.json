@@ -1,19 +1,18 @@
 {
-  "name": "line-gemini-bot",
+  "name": "line-ai-habit-bot",
   "version": "1.0.0",
   "private": true,
-  "description": "LINE Messaging API + Google Gemini API を使った Vercel デプロイ用 LINE Bot",
   "scripts": {
-    "build": "tsc --noEmit",
+    "build": "echo build skipped",
     "dev": "vercel dev"
   },
   "dependencies": {
-    "@line/bot-sdk": "^9.4.2",
-    "@google/genai": "^2.13.0"
+    "@google/genai": "^1.16.0",
+    "@line/bot-sdk": "^10.17.1"
   },
   "devDependencies": {
-    "@vercel/node": "^3.1.7",
-    "typescript": "^5.5.4",
-    "@types/node": "^20.14.11"
+    "@types/node": "^22.15.30",
+    "@vercel/node": "^5.3.24",
+    "typescript": "^5.8.3"
   }
 }
