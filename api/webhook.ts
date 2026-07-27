@@ -63,17 +63,27 @@ function getGenAI() {
   return new GoogleGenAI({});
 }
 
-async function generateReply(userText: string): Promise<string> {
-  return `受け取りました: ${userText}`;
+function getGenAI() {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("Missing GEMINI_API_KEY");
+  }
+  return new GoogleGenAI({});
 }
 
+async function generateReply(userText: string): Promise<string> {
+  const genAI = getGenAI();
+
+  const response = await genAI.models.generateContent({
+    model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
+    contents: userText,
+  });
 
   const text = response.text?.trim();
-
   return text && text.length > 0
     ? text
     : "うまく回答を生成できませんでした。";
 }
+
 
 async function handleEvent(event: WebhookEvent): Promise<void> {
   if (!isTextMessageEvent(event)) {
@@ -86,11 +96,11 @@ async function handleEvent(event: WebhookEvent): Promise<void> {
   let replyText = "";
   try {
     replyText = await generateReply(userText);
-  } catch (err) {
-    console.error("Gemini API error:", err);
-    replyText =
-      "AIの返答生成でエラーが発生しました。GEMINI_API_KEY を確認してください。";
-  }
+  } catch (e) {
+  console.error("Gemini API error:", e);
+  reply = "AIの返答生成でエラーが発生しました。";
+}
+
 
   await lineClient.replyMessage({
     replyToken: event.replyToken,
