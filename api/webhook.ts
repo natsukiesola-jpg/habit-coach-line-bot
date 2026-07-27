@@ -59,9 +59,8 @@ function getGenAI() {
     throw new Error("Missing GEMINI_API_KEY");
   }
 
-  return new GoogleGenAI({
-    apiKey: GEMINI_API_KEY,
-  });
+  // 公式の最小形に合わせる
+  return new GoogleGenAI({});
 }
 
 async function generateReply(userText: string): Promise<string> {
@@ -70,19 +69,14 @@ async function generateReply(userText: string): Promise<string> {
   const response = await genAI.models.generateContent({
     model: GEMINI_MODEL,
     contents: userText,
-    config: {
-      systemInstruction:
-        "あなたは親切なアシスタントです。LINE のトーク画面で読みやすいよう、簡潔な日本語で答えてください。",
-    },
   });
 
   const text = response.text?.trim();
+
   return text && text.length > 0
     ? text
-    : "すみません、うまく回答を生成できませんでした。";
+    : "うまく回答を生成できませんでした。";
 }
-
-
 
 async function handleEvent(event: WebhookEvent): Promise<void> {
   if (!isTextMessageEvent(event)) {
@@ -98,7 +92,7 @@ async function handleEvent(event: WebhookEvent): Promise<void> {
   } catch (err) {
     console.error("Gemini API error:", err);
     replyText =
-      "エラーが発生しました。しばらくしてからもう一度お試しください。";
+      "AIの返答生成でエラーが発生しました。GEMINI_API_KEY を確認してください。";
   }
 
   await lineClient.replyMessage({
@@ -147,6 +141,7 @@ export default async function handler(
     }
 
     let events: WebhookEvent[] = [];
+
     try {
       const body = JSON.parse(rawBodyText) as { events?: WebhookEvent[] };
       events = body.events ?? [];
@@ -156,13 +151,14 @@ export default async function handler(
       return;
     }
 
-    // Verify は events が空でも 200 を返せばOK
+    // LINE Developers の Verify 用
     if (events.length === 0) {
       res.status(200).send("OK");
       return;
     }
 
     await Promise.all(events.map((event) => handleEvent(event)));
+
     res.status(200).send("OK");
   } catch (err) {
     console.error("Webhook handling error:", err);
