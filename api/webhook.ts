@@ -7,6 +7,7 @@ import {
   type MessageEvent,
   type TextEventMessage,
 } from "@line/bot-sdk";
+import { GoogleGenAI } from "@google/genai";
 
 export const config = {
   api: {
@@ -51,20 +52,61 @@ function getLineClient() {
   });
 }
 
+function getGenAI() {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("Missing GEMINI_API_KEY");
+  }
+
+  return new GoogleGenAI({ apiKey });
+}
+
+async function generateReply(userText: string): Promise<string> {
+  const genAI = getGenAI();
+
+  const response = await genAI.models.generateContent({
+    model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
+    contents: userText,
+  });
+
+  const text = response.text?.trim();
+
+  return text && text.length > 0
+    ? text
+    : "うまく回答を生成できませんでした。";
+}
+
 async function handleEvent(event: WebhookEvent): Promise<void> {
   if (!isTextMessageEvent(event)) return;
 
   const lineClient = getLineClient();
 
-  await lineClient.replyMessage({
-    replyToken: event.replyToken,
-    messages: [
-      {
-        type: "text",
-        text: `受け取りました: ${event.message.text}`,
-      },
-    ],
-  });
+  try {
+    const replyText = await generateReply(event.message.text);
+
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [
+        {
+          type: "text",
+          text: replyText,
+        },
+      ],
+    });
+  } catch (err) {
+    console.error("Gemini API error:", err);
+
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [
+        {
+          type: "text",
+          text: "AIの返答生成でエラーが発生しました。",
+        },
+      ],
+    });
+  }
 }
 
 export default async function handler(
