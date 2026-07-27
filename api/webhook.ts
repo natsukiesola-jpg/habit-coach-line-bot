@@ -65,22 +65,9 @@ function getGenAI() {
 }
 
 async function generateReply(userText: string): Promise<string> {
-  const genAI = getGenAI();
-
-  const response = await genAI.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: userText,
-    config: {
-      systemInstruction:
-        "あなたは親切なアシスタントです。LINE のトーク画面で読みやすいよう、簡潔な日本語で答えてください。",
-    },
-  });
-
-  const text = response.text?.trim();
-  return text && text.length > 0
-    ? text
-    : "すみません、うまく回答を生成できませんでした。";
+  return `受け取りました: ${userText}`;
 }
+
 
 async function handleEvent(event: WebhookEvent): Promise<void> {
   if (!isTextMessageEvent(event)) {
