@@ -64,12 +64,9 @@ function getGenAI() {
 }
 
 async function generateReply(userText: string): Promise<string> {
-  const genAI = getGenAI();
+  return `受け取りました: ${userText}`;
+}
 
-  const response = await genAI.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: userText,
-  });
 
   const text = response.text?.trim();
 
