@@ -68,7 +68,7 @@ async function handleEvent(event: WebhookEvent): Promise<void> {
       messages: [
         {
           type: "text",
-          text: `受け取りました: ${event.message.text}`,
+          text: `新しいコードです！ ${event.message.text}`,
         },
       ],
     });
