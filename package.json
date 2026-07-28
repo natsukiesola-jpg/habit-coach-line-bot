@@ -8,7 +8,8 @@
   },
   "dependencies": {
     "@google/genai": "^2.13.0",
-    "@line/bot-sdk": "^11.2.0"
+    "@line/bot-sdk": "^11.2.0",
+    "@supabase/supabase-js": "^2.110.9"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
