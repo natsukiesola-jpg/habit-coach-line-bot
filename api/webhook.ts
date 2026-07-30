@@ -36,6 +36,14 @@ type UserRecord = {
   notify_time: string | null;
 };
 
+type DailyCheckin = {
+  id: string;
+  line_user_id: string;
+  checkin_date: string;
+  mood: string | null;
+  exercise_minutes: number | null;
+};
+
 function getSupabaseClient() {
   if (!SUPABASE_URL) {
     throw new Error("Missing SUPABASE_URL");
@@ -45,16 +53,12 @@ function getSupabaseClient() {
     throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
   }
 
-  return createClient(
-    SUPABASE_URL,
-    SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
     },
-  );
+  });
 }
 
 function getLineClient() {
@@ -67,17 +71,13 @@ function getLineClient() {
   });
 }
 
-async function getRawBody(
-  req: IncomingMessage,
-): Promise<Buffer> {
+async function getRawBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
 
     req.on("data", (chunk) => {
       chunks.push(
-        Buffer.isBuffer(chunk)
-          ? chunk
-          : Buffer.from(chunk),
+        Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
       );
     });
 
@@ -100,9 +100,7 @@ function isTextMessageEvent(
   );
 }
 
-function getLineUserId(
-  event: WebhookEvent,
-): string | null {
+function getLineUserId(event: WebhookEvent): string | null {
   if (
     event.source.type === "user" &&
     event.source.userId
@@ -119,6 +117,15 @@ function normalizeText(text: string): string {
     .replace(/[０-９]/g, (character) =>
       String.fromCharCode(character.charCodeAt(0) - 65248),
     );
+}
+
+function getJapanDate(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 const GOAL_MESSAGE = `はじめまして！
@@ -157,7 +164,24 @@ const NOTIFY_TIME_MESSAGE = `毎日の運動メッセージを何時に受け取
 3. 18:00
 4. 21:00
 
-または「8:30」のように、5:00〜22:00の間で入力してください。`;
+または「8:30」のように入力してください。`;
+
+const MOOD_MESSAGE = `今日の調子を教えてください🌱
+
+1. 元気
+2. 普通
+3. 疲れている
+4. ストレスを感じている
+
+数字で回答してください。`;
+
+const MINUTES_MESSAGE = `今日は何分くらい運動できそうですか？
+
+1. 5分
+2. 20分
+3. 60分
+
+数字で回答してください。`;
 
 function parseGoal(text: string): string | null {
   const choices: Record<string, string> = {
@@ -171,9 +195,7 @@ function parseGoal(text: string): string | null {
   return choices[normalizeText(text)] ?? null;
 }
 
-function parseExerciseLevel(
-  text: string,
-): string | null {
+function parseExerciseLevel(text: string): string | null {
   const choices: Record<string, string> = {
     "1": "ほとんど運動していない",
     "2": "週1〜2回運動している",
@@ -195,9 +217,7 @@ function parseTwentyMinFeeling(
   return choices[normalizeText(text)] ?? null;
 }
 
-function parseNotifyTime(
-  text: string,
-): string | null {
+function parseNotifyTime(text: string): string | null {
   const normalizedText = normalizeText(text);
 
   const choices: Record<string, string> = {
@@ -236,6 +256,29 @@ function parseNotifyTime(
   ).padStart(2, "0")}`;
 }
 
+function parseMood(text: string): string | null {
+  const choices: Record<string, string> = {
+    "1": "元気",
+    "2": "普通",
+    "3": "疲れている",
+    "4": "ストレスを感じている",
+  };
+
+  return choices[normalizeText(text)] ?? null;
+}
+
+function parseExerciseMinutes(
+  text: string,
+): number | null {
+  const choices: Record<string, number> = {
+    "1": 5,
+    "2": 20,
+    "3": 60,
+  };
+
+  return choices[normalizeText(text)] ?? null;
+}
+
 async function getOrCreateUser(
   lineUserId: string,
 ): Promise<UserRecord> {
@@ -249,9 +292,7 @@ async function getOrCreateUser(
       .maybeSingle();
 
   if (selectError) {
-    throw new Error(
-      `Failed to get LINE user: ${selectError.message}`,
-    );
+    throw new Error(selectError.message);
   }
 
   if (existingUser) {
@@ -269,9 +310,7 @@ async function getOrCreateUser(
 
   if (insertError || !newUser) {
     throw new Error(
-      `Failed to create LINE user: ${
-        insertError?.message ?? "Unknown error"
-      }`,
+      insertError?.message ?? "User creation failed",
     );
   }
 
@@ -290,13 +329,73 @@ async function updateUser(
     .eq("line_user_id", lineUserId);
 
   if (error) {
-    throw new Error(
-      `Failed to update LINE user: ${error.message}`,
-    );
+    throw new Error(error.message);
   }
 }
 
-async function createQuestionnaireReply(
+async function getTodayCheckin(
+  lineUserId: string,
+): Promise<DailyCheckin | null> {
+  const supabase = getSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("daily_checkins")
+    .select("*")
+    .eq("line_user_id", lineUserId)
+    .eq("checkin_date", getJapanDate())
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data as DailyCheckin | null;
+}
+
+async function createTodayCheckin(
+  lineUserId: string,
+): Promise<void> {
+  const supabase = getSupabaseClient();
+
+  const { error } = await supabase
+    .from("daily_checkins")
+    .upsert(
+      {
+        line_user_id: lineUserId,
+        checkin_date: getJapanDate(),
+      },
+      {
+        onConflict: "line_user_id,checkin_date",
+        ignoreDuplicates: true,
+      },
+    );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function updateTodayCheckin(
+  lineUserId: string,
+  values: Partial<DailyCheckin>,
+): Promise<void> {
+  const supabase = getSupabaseClient();
+
+  const { error } = await supabase
+    .from("daily_checkins")
+    .update({
+      ...values,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("line_user_id", lineUserId)
+    .eq("checkin_date", getJapanDate());
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function createOnboardingReply(
   user: UserRecord,
   receivedText: string,
 ): Promise<string> {
@@ -307,9 +406,7 @@ async function createQuestionnaireReply(
       return GOAL_MESSAGE;
     }
 
-    await updateUser(user.line_user_id, {
-      goal,
-    });
+    await updateUser(user.line_user_id, { goal });
 
     return `「${goal}」ですね！✨
 
@@ -336,56 +433,134 @@ ${TWENTY_MIN_MESSAGE}`;
   }
 
   if (!user.twenty_min_feeling) {
-    const twentyMinFeeling =
+    const feeling =
       parseTwentyMinFeeling(receivedText);
 
-    if (!twentyMinFeeling) {
+    if (!feeling) {
       return `1〜3の数字で回答してください。
 
 ${TWENTY_MIN_MESSAGE}`;
     }
 
     await updateUser(user.line_user_id, {
-      twenty_min_feeling: twentyMinFeeling,
+      twenty_min_feeling: feeling,
     });
 
-    return `あなたに合った運動量を考える参考にします😊
+    return `ありがとうございます😊
 
 ${NOTIFY_TIME_MESSAGE}`;
   }
 
-  if (!user.notify_time) {
-    const notifyTime =
-      parseNotifyTime(receivedText);
+  const notifyTime = parseNotifyTime(receivedText);
 
-    if (!notifyTime) {
-      return `時間を正しく入力してください。
-
-例：7:00、18:30
+  if (!notifyTime) {
+    return `時間を正しく入力してください。
 
 ${NOTIFY_TIME_MESSAGE}`;
+  }
+
+  await updateUser(user.line_user_id, {
+    notify_time: notifyTime,
+  });
+
+  return `登録が完了しました！🎉
+
+毎日の記録を始めるときは、
+「チェックイン」
+と送ってください。`;
+}
+
+async function createDailyCheckinReply(
+  user: UserRecord,
+  receivedText: string,
+): Promise<string> {
+  const normalizedText = normalizeText(receivedText);
+  let checkin = await getTodayCheckin(user.line_user_id);
+
+  if (normalizedText === "チェックイン") {
+    if (
+      checkin?.mood &&
+      checkin.exercise_minutes !== null
+    ) {
+      return `今日はすでにチェックイン済みです😊
+
+・今日の調子：${checkin.mood}
+・運動時間：${checkin.exercise_minutes}分`;
     }
 
-    await updateUser(user.line_user_id, {
-      notify_time: notifyTime,
-    });
+    if (!checkin) {
+      await createTodayCheckin(user.line_user_id);
+    }
 
-    return `登録が完了しました！🎉
-
-毎日${notifyTime}ごろに、あなたに合った運動を提案します。
-
-まずは無理なく、一緒に続けていきましょう🌱`;
+    return MOOD_MESSAGE;
   }
 
-  return `登録は完了しています😊
+  if (!checkin) {
+    return `毎日の記録を始めるときは、
+「チェックイン」
+と送ってください🌱`;
+  }
 
-現在の設定
-・目標：${user.goal}
-・運動習慣：${user.exercise_level}
-・20分運動への気持ち：${user.twenty_min_feeling}
-・通知時間：${user.notify_time}
+  if (!checkin.mood) {
+    const mood = parseMood(receivedText);
 
-次は、今日の体調に合わせた運動提案機能を準備します。`;
+    if (!mood) {
+      return `1〜4の数字で回答してください。
+
+${MOOD_MESSAGE}`;
+    }
+
+    await updateTodayCheckin(user.line_user_id, {
+      mood,
+    });
+
+    return `「${mood}」ですね。
+
+${MINUTES_MESSAGE}`;
+  }
+
+  if (checkin.exercise_minutes === null) {
+    const minutes = parseExerciseMinutes(receivedText);
+
+    if (minutes === null) {
+      return `1〜3の数字で回答してください。
+
+${MINUTES_MESSAGE}`;
+    }
+
+    await updateTodayCheckin(user.line_user_id, {
+      exercise_minutes: minutes,
+    });
+
+    return `今日のチェックインが完了しました！🎉
+
+・今日の調子：${checkin.mood}
+・運動時間：${minutes}分
+
+今日は${minutes}分、無理のない範囲で体を動かしてみましょう🌱`;
+  }
+
+  return `今日はすでにチェックイン済みです😊
+
+・今日の調子：${checkin.mood}
+・運動時間：${checkin.exercise_minutes}分`;
+}
+
+async function createReply(
+  user: UserRecord,
+  receivedText: string,
+): Promise<string> {
+  const onboardingComplete =
+    user.goal &&
+    user.exercise_level &&
+    user.twenty_min_feeling &&
+    user.notify_time;
+
+  if (!onboardingComplete) {
+    return createOnboardingReply(user, receivedText);
+  }
+
+  return createDailyCheckinReply(user, receivedText);
 }
 
 async function replyText(
@@ -415,40 +590,24 @@ async function handleEvent(
   const lineUserId = getLineUserId(event);
 
   if (!lineUserId) {
-    await replyText(
-      event.replyToken,
-      "ユーザー情報を取得できませんでした。",
-    );
     return;
   }
 
   try {
     const user = await getOrCreateUser(lineUserId);
 
-    const replyMessage =
-      await createQuestionnaireReply(
-        user,
-        event.message.text,
-      );
-
-    await replyText(
-      event.replyToken,
-      replyMessage,
+    const reply = await createReply(
+      user,
+      event.message.text,
     );
 
-    console.log(
-      "Questionnaire reply sent:",
-      lineUserId,
-    );
+    await replyText(event.replyToken, reply);
   } catch (error) {
-    console.error(
-      "Questionnaire handling error:",
-      error,
-    );
+    console.error("LINE bot error:", error);
 
     await replyText(
       event.replyToken,
-      "申し訳ありません。登録処理でエラーが発生しました。少し時間をおいて、もう一度お試しください。",
+      "申し訳ありません。エラーが発生しました。少し時間をおいて、もう一度お試しください。",
     );
   }
 }
@@ -459,24 +618,13 @@ export default async function handler(
 ): Promise<void> {
   try {
     if (req.method !== "POST") {
-      res
-        .status(405)
-        .send("Method Not Allowed");
-      return;
-    }
-
-    if (!LINE_CHANNEL_SECRET) {
-      res
-        .status(500)
-        .send("Server misconfigured");
+      res.status(405).send("Method Not Allowed");
       return;
     }
 
     const rawBody = await getRawBody(req);
     const rawText = rawBody.toString("utf-8");
-
-    const signature =
-      req.headers["x-line-signature"];
+    const signature = req.headers["x-line-signature"];
 
     const isValid =
       typeof signature === "string" &&
@@ -487,43 +635,21 @@ export default async function handler(
       );
 
     if (!isValid) {
-      res
-        .status(401)
-        .send("Invalid signature");
+      res.status(401).send("Invalid signature");
       return;
     }
 
-    let events: WebhookEvent[];
-
-    try {
-      const body = JSON.parse(rawText) as {
-        events?: WebhookEvent[];
-      };
-
-      events = body.events ?? [];
-    } catch {
-      res.status(400).send("Invalid JSON");
-      return;
-    }
-
-    if (events.length === 0) {
-      res.status(200).send("OK");
-      return;
-    }
+    const body = JSON.parse(rawText) as {
+      events?: WebhookEvent[];
+    };
 
     await Promise.all(
-      events.map(handleEvent),
+      (body.events ?? []).map(handleEvent),
     );
 
     res.status(200).send("OK");
   } catch (error) {
-    console.error(
-      "Webhook handling error:",
-      error,
-    );
-
-    res
-      .status(500)
-      .send("Internal Server Error");
+    console.error("Webhook error:", error);
+    res.status(500).send("Internal Server Error");
   }
 }
