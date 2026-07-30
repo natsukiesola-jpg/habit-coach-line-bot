@@ -24,8 +24,8 @@ const LINE_CHANNEL_SECRET =
 const SUPABASE_URL =
   process.env.SUPABASE_URL ?? "";
 
-const SUPABASE_ANON_KEY =
-  process.env.SUPABASE_ANON_KEY ?? "";
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 function getSupabaseClient() {
   if (!SUPABASE_URL) {
@@ -36,7 +36,10 @@ function getSupabaseClient() {
     throw new Error("Missing SUPABASE_ANON_KEY");
   }
 
-  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+return createClient(
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
+);
 }
 
 async function getRawBody(req: IncomingMessage): Promise<Buffer> {
