@@ -180,7 +180,7 @@ async function handleEvent(
       messages: [
         {
           type: "text",
-          text: `新しいコードです！ ${event.message.text}`,
+          text: `Supabaseテスト中です！ ${event.message.text}`,
         },
       ],
     });
