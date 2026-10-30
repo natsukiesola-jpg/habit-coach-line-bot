@@ -5,12 +5,13 @@ import {
   findItemKey,
   getJapanDate,
   HOMEWORK_ITEMS,
+  STEP_NAMES,
   type HomeworkLog,
   type HomeworkStudent,
 } from "../lib/homework";
 
 // なつきさん用の管理コマンド（Mac で実行）。LINE には何も送りません。
-//   npm run hw -- items                      宿題の一覧
+//   npm run hw -- items [ステップ]             宿題の一覧（ステップ別）
 //   npm run hw -- preview 前もも 合蹠 [--gentle]  届くメッセージの見本（通信なし）
 //   npm run hw -- add Aさん 前もも 合蹠          受講生を追加して招待コードを出す
 //   npm run hw -- set Aさん 猫の伸び [できたら]   宿題を変える
@@ -20,7 +21,7 @@ import {
 //   npm run hw -- send-now [--dry]           朝7時を待たずに今日の宿題を送る（--dry は送らず確認だけ）
 
 const USAGE = `使い方:
-  npm run hw -- items
+  npm run hw -- items [1|2|3]
   npm run hw -- preview <必須> [できたら] [--gentle]
   npm run hw -- add <呼び名> <必須> [できたら]
   npm run hw -- set <呼び名> <必須> [できたら]
@@ -107,8 +108,24 @@ async function main(args: string[]): Promise<void> {
   const [command, ...rest] = args;
 
   if (command === "items") {
-    for (const [key, item] of Object.entries(HOMEWORK_ITEMS)) {
-      console.log(`${key.padEnd(10)} ${item.name}（${item.min}分）`);
+    const only = rest[0] ? Number(rest[0]) : null;
+
+    for (const step of [1, 2, 3] as const) {
+      if (only && only !== step) {
+        continue;
+      }
+
+      console.log(`\n■ ステップ${step}　${STEP_NAMES[step]}`);
+
+      for (const core of [true, false]) {
+        console.log(core ? "  必須向き" : "  できたら向き");
+
+        for (const [key, item] of Object.entries(HOMEWORK_ITEMS)) {
+          if (item.step === step && item.core === core) {
+            console.log(`    ${key.padEnd(12)} ${item.name}（${item.min}分）`);
+          }
+        }
+      }
     }
     return;
   }
