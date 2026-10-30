@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "echo build skipped",
-    "dev": "vercel dev"
+    "build": "tsc --noEmit",
+    "dev": "vercel dev",
+    "hw": "tsc && node --env-file-if-exists=.env.local dist/scripts/hw.js"
   },
   "dependencies": {
     "@google/genai": "^2.13.0",

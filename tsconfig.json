@@ -9,9 +9,21 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "dist",
-    "lib": ["ES2020"],
-    "types": ["node"]
+    "lib": [
+      "ES2020"
+    ],
+    "types": [
+      "node"
+    ],
+    "rootDir": "."
   },
-  "include": ["api/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "api/**/*.ts",
+    "lib/**/*.ts",
+    "scripts/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

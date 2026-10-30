@@ -4,10 +4,25 @@ import { createClient } from "@supabase/supabase-js";
 import {
   messagingApi,
   validateSignature,
-  type WebhookEvent,
-  type MessageEvent,
-  type TextEventMessage,
+  webhook,
 } from "@line/bot-sdk";
+import {
+  buildHomeworkMessage,
+  buildResultReply,
+  getJapanDate as getHomeworkDate,
+  getLog,
+  getStudentByLineUserId,
+  linkStudent,
+  normalizeInviteCode,
+  parseHomeworkPostback,
+  saveResult,
+  HOMEWORK_ITEMS,
+  type HomeworkStudent,
+} from "../lib/homework";
+
+type WebhookEvent = webhook.Event;
+type MessageEvent = webhook.MessageEvent;
+type TextEventMessage = webhook.TextMessageContent;
 
 export const config = {
   api: {
@@ -102,7 +117,7 @@ function isTextMessageEvent(
 
 function getLineUserId(event: WebhookEvent): string | null {
   if (
-    event.source.type === "user" &&
+    event.source?.type === "user" &&
     event.source.userId
   ) {
     return event.source.userId;
@@ -580,20 +595,153 @@ async function replyText(
   });
 }
 
+async function replyMessages(
+  replyToken: string,
+  messages: messagingApi.Message[],
+): Promise<void> {
+  const lineClient = getLineClient();
+
+  await lineClient.replyMessage({
+    replyToken,
+    messages,
+  });
+}
+
+const HOMEWORK_ONLY_MESSAGE = `このアカウントは宿題の自動配信専用です。
+なつきさんへのご連絡は、いつものLINEからお願いします🌱
+
+今日の宿題をもう一度見るときは「宿題」と送ってください。`;
+
+// パーソナル受講生からのメッセージ。宿題の配信に関係するものだけに答える。
+async function createHomeworkReply(
+  student: HomeworkStudent,
+  receivedText: string,
+): Promise<messagingApi.Message[]> {
+  if (normalizeText(receivedText) !== "宿題") {
+    return [{ type: "text", text: HOMEWORK_ONLY_MESSAGE }];
+  }
+
+  const today = getHomeworkDate();
+  const log = await getLog(getSupabaseClient(), student.id, today);
+
+  if (!log?.sent_at) {
+    return [
+      {
+        type: "text",
+        text: "今日の宿題は、朝7時ごろに届きます。もう少し待っていてください☀️",
+      },
+    ];
+  }
+
+  return [
+    buildHomeworkMessage(log.must_item, log.opt_item, today, false),
+  ];
+}
+
+async function handleHomeworkPostback(
+  student: HomeworkStudent,
+  data: string,
+): Promise<string> {
+  const answer = parseHomeworkPostback(data);
+
+  if (!answer) {
+    return HOMEWORK_ONLY_MESSAGE;
+  }
+
+  const saved = await saveResult(
+    getSupabaseClient(),
+    student.id,
+    answer.date,
+    answer.result,
+  );
+
+  if (!saved) {
+    return "この日の宿題が見つかりませんでした。今日の宿題は「宿題」と送ると見られます。";
+  }
+
+  return buildResultReply(answer.result);
+}
+
+function createWelcomeMessage(student: HomeworkStudent): string {
+  const must = HOMEWORK_ITEMS[student.must_item];
+  const opt = student.opt_item
+    ? HOMEWORK_ITEMS[student.opt_item]
+    : null;
+
+  return `登録できました！🎉
+明日から毎朝7時ごろ、ここに宿題が届きます。
+
+いまの宿題
+【必須】${must.name}${opt ? `
+【できたら】${opt.name}` : ""}
+
+できた日もできなかった日も、ボタンで教えてもらえたらうれしいです。`;
+}
+
 async function handleEvent(
   event: WebhookEvent,
 ): Promise<void> {
-  if (!isTextMessageEvent(event)) {
+  if (event.type !== "postback" && !isTextMessageEvent(event)) {
     return;
   }
 
   const lineUserId = getLineUserId(event);
+  const replyToken = event.replyToken;
 
-  if (!lineUserId) {
+  if (!lineUserId || !replyToken) {
     return;
   }
 
   try {
+    const supabase = getSupabaseClient();
+
+    if (event.type === "postback") {
+      const student = await getStudentByLineUserId(
+        supabase,
+        lineUserId,
+      );
+
+      if (student) {
+        await replyText(
+          replyToken,
+          await handleHomeworkPostback(student, event.postback.data),
+        );
+      }
+
+      return;
+    }
+
+    const inviteCode = normalizeInviteCode(event.message.text);
+
+    if (inviteCode) {
+      const linked = await linkStudent(
+        supabase,
+        inviteCode,
+        lineUserId,
+      );
+
+      await replyText(
+        replyToken,
+        linked
+          ? createWelcomeMessage(linked)
+          : "このコードは見つからないか、すでに使われています。なつきさんに確認してください。",
+      );
+      return;
+    }
+
+    const student = await getStudentByLineUserId(
+      supabase,
+      lineUserId,
+    );
+
+    if (student) {
+      await replyMessages(
+        replyToken,
+        await createHomeworkReply(student, event.message.text),
+      );
+      return;
+    }
+
     const user = await getOrCreateUser(lineUserId);
 
     const reply = await createReply(
@@ -601,12 +749,12 @@ async function handleEvent(
       event.message.text,
     );
 
-    await replyText(event.replyToken, reply);
+    await replyText(replyToken, reply);
   } catch (error) {
     console.error("LINE bot error:", error);
 
     await replyText(
-      event.replyToken,
+      replyToken,
       "申し訳ありません。エラーが発生しました。少し時間をおいて、もう一度お試しください。",
     );
   }
